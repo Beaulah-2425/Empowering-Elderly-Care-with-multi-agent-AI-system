@@ -1,0 +1,97 @@
+📦 Install FastAPI and Uvicorn
+
+Add to requirements.txt:
+fastapi
+uvicorn
+
+Install with:
+pip install fastapi uvicorn
+
+🛠️ Directory Update:
+elderly-care-multi-agent/
+├── api/
+│   └── main.py  👈 FastAPI app lives here
+├── mqtt/
+│   └── mqtt_listener.py  👈 Subscribes and stores data
+├── data_store.py  👈 In-memory cache (for now)
+├── run_api.py  👈 Launches FastAPI + MQTT listener.
+
+🧠 data_store.py:
+# Simple in-memory store for latest data
+store = {
+    "vitals": {},
+    "environment": {},
+    "alerts": []
+}
+
+📡 mqtt/mqtt_listener.py:
+import json
+import paho.mqtt.client as mqtt
+from data_store import store
+
+def on_connect(client, userdata, flags, rc):
+    print("Connected to MQTT broker")
+    client.subscribe("health/vitals")
+    client.subscribe("env/status")
+    client.subscribe("alerts/emergency")
+
+def on_message(client, userdata, msg):
+    topic = msg.topic
+    payload = json.loads(msg.payload)
+
+    if topic == "health/vitals":
+        store["vitals"] = payload
+    elif topic == "env/status":
+        store["environment"] = payload
+    elif topic == "alerts/emergency":
+        store["alerts"].append(payload)
+    print(f"[MQTT] {topic} -> {payload}")
+
+def run_mqtt_listener(broker="localhost", port=1883):
+    client = mqtt.Client("APIListener")
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(broker, port)
+    client.loop_start()
+
+🚀 api/main.py:
+from fastapi import FastAPI
+from data_store import store
+
+app = FastAPI(title="Elderly Care Multi-Agent API")
+
+@app.get("/")
+def root():
+    return {"message": "Welcome to the Elderly Care System API"}
+
+@app.get("/vitals")
+def get_vitals():
+    return store["vitals"]
+
+@app.get("/environment")
+def get_environment():
+    return store["environment"]
+
+@app.get("/alerts")
+def get_alerts():
+    return store["alerts"]
+
+
+▶️ run_api.py:
+from mqtt.mqtt_listener import run_mqtt_listener
+import uvicorn
+import threading
+
+if __name__ == "__main__":
+    # Start MQTT in a background thread
+    threading.Thread(target=run_mqtt_listener, daemon=True).start()
+
+    # Launch FastAPI server
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
+
+✅ Run It!
+python run_api.py
+
+Then open your browser:
+http://localhost:8000
+Swagger Docs: http://localhost:8000/docs
